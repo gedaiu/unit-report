@@ -1,0 +1,10 @@
+{
+	"name": "unit-report",
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2015, gedaiu",
+	"authors": ["gedaiu"],
+	"dependencies": {
+		"vibe-d": "~>0.7.22"
+	},
+	"versions": ["VibeCustomMain"]
+}
