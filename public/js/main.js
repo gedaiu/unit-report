@@ -28,10 +28,17 @@ $(function() {
 
 		  	if(data.message == "removeBodyClass")
 		  		$("body").removeClass(data.cls);
+
+		  	if(data.message == "executionTime")
+		  		$(".executionTime").html(data.text);
 		}
 
 		$(".btn-run-test").click(function() {
 			w.postMessage("runTest");
+		});
+
+		$(".btn-stop-test").click(function() {
+			w.postMessage("stopTest");
 		});
 
 	} else {

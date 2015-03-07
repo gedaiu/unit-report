@@ -3,9 +3,19 @@
 }
 
 .runningTest .btn-stop-test {
-	display: block;
+	display: inline-block;
 }
 
 .runningTest .btn-run-test {
 	display: none;
+}
+
+.executionTime {
+	display: none;
+}
+
+.runningTest .executionTime {
+	display: inline-block;
+	font-size: 25px;
+	vertical-align: middle;
 }

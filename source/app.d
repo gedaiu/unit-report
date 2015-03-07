@@ -93,6 +93,8 @@ class Client {
 					runTest();
 				else if(msg == "get")
 					sendReport();
+				else if(msg == "stopTest")
+					stopTest();
 				else if(msg != "")
 					socket.send(msg);
 			}
@@ -109,22 +111,34 @@ void runTest() {
 	test.start;
 }
 
+void stopTest() {
+	writeln("Force stop tests");
+
+	if(test !is null)
+		test.stop;
+}
+
 class RunningTest {
 	SysTime beginTest;
 	SysTime endTest;
 	Pid pid;
 
-	static void watchProcess(Pid pid) {
+	static void watchProcess(Pid pid, SysTime begin) {
 		try {
 			auto proc = tryWait(pid);
 
 			while(!proc.terminated) {
 				proc = tryWait(pid);
-				Thread.sleep(dur!"mseconds"(500));
+				Thread.sleep(dur!"msecs"(500));
+
+				auto d = Clock.currTime - begin;
+				auto msecs = d.total!"msecs";
+				auto t = msecs.to!string;
+				events ~= `{ "message": "executionTime", "msecs": ` ~ t ~ ` }`;
 			}
 
-			if (proc.status == 0) writeln("Compilation succeeded!");
-			else writeln("Compilation failed");
+			if (proc.status != 0) events ~= `{ "message": "executionFail" }`;
+
 		} catch (Exception e) {
 			writeln(e);
 		}
@@ -139,6 +153,7 @@ class RunningTest {
 		File f;
 		const(immutable(char)[][string]) env;
 
+		beginTest = Clock.currTime;
 		pid = spawnProcess(["dub", "test"],
                         std.stdio.stdin,
                         std.stdio.stdout,
@@ -147,8 +162,16 @@ class RunningTest {
                         config,
                         cast(const(char[])) projectPath);
 
-		auto fileTask = task!watchProcess(pid);
+		auto fileTask = task!watchProcess(pid, beginTest);
 		fileTask.executeInNewThread();
+	}
+
+	void stop() {
+		try {
+			kill(pid, SIGKILL);
+		} catch (Exception e) {
+			writeln(e);
+		}
 	}
 }
 

@@ -3,6 +3,9 @@ self.onmessage = function(e) {
 
 	if(e.data == "runTest")
 		ws.send("runTest");
+
+	if(e.data == "stopTest")
+		ws.send("stopTest");
 }
 
 console.log(self.onmessage, self);
@@ -38,12 +41,24 @@ ws.onmessage = function (evt)
 			message: "addBodyClass",
 			cls: "runningTest"
 		}));
+
+		postMessage(JSON.stringify({
+			message: "executionTime",
+			text: "0s"
+		}));
 	}
 
 	if(received_msg.message == "testEnd") {
 		postMessage(JSON.stringify({
 			message: "removeBodyClass",
 			cls: "runningTest"
+		}));
+	}
+
+	if(received_msg.message == "executionTime") {
+		postMessage(JSON.stringify({
+			message: "executionTime",
+			text: parseInt(parseInt(received_msg.msecs) / 1000) + "s"
 		}));
 	}
 };
