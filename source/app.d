@@ -5,20 +5,29 @@ import vibe.http.fileserver : serveStaticFiles;
 import vibe.http.router : URLRouter;
 import vibe.http.server;
 import vibe.http.websockets : WebSocket, handleWebSockets;
+import vibe.data.json;
 
 import core.time;
 import std.conv : to;
 import std.stdio;
 import std.file;
 import std.parallelism;
+import std.path;
+import std.process;
+import std.datetime;
+
 import core.thread;
 import core.sys.posix.signal;
 
 import filewatch;
 
 shared bool isRunning = true;
-shared bool changed;
-string file;
+shared string events[];
+
+RunningTest test;
+
+string reportFile;
+string projectPath;
 
 shared static this()
 {
@@ -36,33 +45,116 @@ shared static this()
 void handleWebSocketConnection(scope WebSocket socket)
 {
 	writeln("Got new web socket connection.");
-	ulong sent;
-	ulong oldSent;
-	string msg = "get";
 
-	socket.send(file.readText);
-
-	while (socket.connected) {
-		sleep(1.seconds);
-
-		//if(socket.dataAvailableForRead)
-		//	msg = socket.receiveText();
-		if(changed && sent == oldSent || msg == "get") {
-			socket.send(file.readText);
-			sent++;
-			msg = "";
-		} else if(!changed) {
-			oldSent = sent;
-		}
-	}
+	auto client = new Client(socket);
+	client.listen;
 
 	writeln("Client disconnected.");
+}
+
+
+class Client {
+	WebSocket socket;
+	ulong eventPosition;
+	string msg = "get";
+
+	this(WebSocket socket) {
+		this.socket = socket;
+		eventPosition = events.length;
+	}
+
+	void sendReport() {
+		writeln("send rep");
+		Json msg = Json.emptyObject;
+		msg["message"] = "log";
+		msg["data"] = reportFile.readText;
+
+		socket.send(msg.to!string);
+	}
+
+	void listen() {
+
+		try {
+			while (socket.connected) {
+				bool hasData = socket.waitForData(dur!"msecs"(50));
+				msg = "";
+
+				if(hasData) {
+					msg = socket.receiveText();
+				} else if(eventPosition < events.length) {
+					msg = events[eventPosition];
+					eventPosition++;
+				}
+
+				if(msg != "")
+					writeln("msg:",msg);
+
+				if(msg == "runTest")
+					runTest();
+				else if(msg == "get")
+					sendReport();
+				else if(msg != "")
+					socket.send(msg);
+			}
+		} catch(Exception e) {
+			writeln(e);
+		}
+	}
+}
+
+void runTest() {
+	writeln("Running tests");
+
+	test = new RunningTest;
+	test.start;
+}
+
+class RunningTest {
+	SysTime beginTest;
+	SysTime endTest;
+	Pid pid;
+
+	static void watchProcess(Pid pid) {
+		try {
+			auto proc = tryWait(pid);
+
+			while(!proc.terminated) {
+				proc = tryWait(pid);
+				Thread.sleep(dur!"mseconds"(500));
+			}
+
+			if (proc.status == 0) writeln("Compilation succeeded!");
+			else writeln("Compilation failed");
+		} catch (Exception e) {
+			writeln(e);
+		}
+
+		events ~= `{ "message": "testEnd" }`;
+	}
+
+	void start() {
+		events ~= `{ "message": "testBegin" }`;
+
+		Config config;
+		File f;
+		const(immutable(char)[][string]) env;
+
+		pid = spawnProcess(["dub", "test"],
+                        std.stdio.stdin,
+                        std.stdio.stdout,
+                        std.stdio.stderr,
+                        env,
+                        config,
+                        cast(const(char[])) projectPath);
+
+		auto fileTask = task!watchProcess(pid);
+		fileTask.executeInNewThread();
+	}
 }
 
 void watchChanges(FileWatch fileWatch, Thread parent) {
 
 	while(isRunning) {
-		changed = false;
 		fileWatch.update;
 		Thread.sleep(dur!"seconds"(1));
 	}
@@ -78,31 +170,34 @@ extern (C)
 	}
 }
 
-int main(string[] args) {
-	getopt(args, "file", &file);
-
+void createFileWatcher() {
 	void notify(FileWatch.Event event, string path) {
 		std.stdio.writeln("event: ", event, " ", path);
-		changed = true;
+		events ~= "get";
 	}
 
-	if(file == "" || !file.exists) {
-		writeln("Invalid file. You forgot to pass --file flag?");
-		return 1;
-	}
-
-	std.stdio.writeln("Watching for file: ", file);
+	std.stdio.writeln("Watching for file: ", reportFile);
 
 	FileWatch fileWatch;
-	fileWatch.addNotify(file, &notify);
+	fileWatch.addNotify(reportFile, &notify);
 	fileWatch.update(false);
-
-	args = [];
 
 	auto fileTask = task!watchChanges(fileWatch, Thread.getThis);
     fileTask.executeInNewThread();
     sigset(SIGINT, &mybye);
+}
 
+int main(string[] args) {
+	getopt(args, "path", &projectPath);
+
+	if(projectPath == "" || !projectPath.exists) {
+		writeln("Invalid file. You forgot to pass --path flag?");
+		return 1;
+	}
+
+	reportFile = buildPath(projectPath, "results.json");
+
+	createFileWatcher();
 
 	import vibe.core.args : finalizeCommandLineOptions;
 	import vibe.core.core : runEventLoop, lowerPrivileges;

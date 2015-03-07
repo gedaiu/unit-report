@@ -1,4 +1,11 @@
-#menu {
-	position: fixed;
-	top: 20px;
+.btn-stop-test {
+	display: none;
+}
+
+.runningTest .btn-stop-test {
+	display: block;
+}
+
+.runningTest .btn-run-test {
+	display: none;
 }

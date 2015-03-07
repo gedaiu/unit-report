@@ -1,3 +1,12 @@
+self.onmessage = function(e) {
+	console.log(e.data);
+
+	if(e.data == "runTest")
+		ws.send("runTest");
+}
+
+console.log(self.onmessage, self);
+
 var ws = new WebSocket("ws://127.0.0.1:8080/ws");
 
 ws.onopen = function() {
@@ -10,18 +19,33 @@ ws.onmessage = function (evt)
 	var received_msg = JSON.parse(evt.data);
 	console.log("Message is received:", received_msg);
 
-	var groups = groupItems(received_msg);
+	if(received_msg.message == "log") {
+		var groups = groupItems(JSON.parse(received_msg.data));
 
-	postMessage(JSON.stringify({
-		message: "htmlResults",
-		html: createResultHtml(groups)
-	}));
+		postMessage(JSON.stringify({
+			message: "htmlResults",
+			html: createResultHtml(groups)
+		}));
 
+		postMessage(JSON.stringify({
+			message: "htmlMenu",
+			html: createMenuHtml(groups)
+		}));
+	}
 
-	postMessage(JSON.stringify({
-		message: "htmlMenu",
-		html: createMenuHtml(groups)
-	}));
+	if(received_msg.message == "testBegin") {
+		postMessage(JSON.stringify({
+			message: "addBodyClass",
+			cls: "runningTest"
+		}));
+	}
+
+	if(received_msg.message == "testEnd") {
+		postMessage(JSON.stringify({
+			message: "removeBodyClass",
+			cls: "runningTest"
+		}));
+	}
 };
 
 ws.onclose = function()
@@ -87,7 +111,6 @@ function createResultHtml(groups) {
 
          str += "</tbody></table></div>";
 	}
-	console.log(str);
 
 	return str;
 }
